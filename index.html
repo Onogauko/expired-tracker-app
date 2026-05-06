@@ -17,13 +17,11 @@
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen pb-20">
   <div class="max-w-md mx-auto">
-    <!-- Header Aplikasi -->
     <header class="bg-blue-600 text-white pt-8 pb-12 px-6 rounded-b-[2.5rem] shadow-xl text-center">
       <h1 class="text-2xl font-extrabold tracking-tight">EXPIRED TRACKER</h1>
       <p class="text-blue-100 text-xs font-bold uppercase tracking-widest mt-1">Manajemen Stok Mobile</p>
     </header>
 
-    <!-- Navigasi Tab -->
     <div class="px-5 -mt-6 mb-4">
       <div class="flex bg-white p-1 rounded-2xl shadow-lg border border-slate-200">
         <button onclick="switchView('input')" id="tab-input" class="flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all bg-blue-600 text-white shadow-md">Input</button>
@@ -31,7 +29,6 @@
       </div>
     </div>
 
-    <!-- VIEW: INPUT -->
     <div id="view-input" class="p-5 space-y-6">
       <div class="bg-white p-3 rounded-2xl shadow-lg border border-slate-200">
         <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-2">Cari Nama / SKU Barang</label>
@@ -75,7 +72,6 @@
       </form>
     </div>
 
-    <!-- VIEW: HISTORY -->
     <div id="view-history" class="hidden p-5 space-y-4">
       <div class="flex justify-between items-center px-2">
         <h2 class="text-sm font-black text-slate-400 uppercase tracking-widest">Riwayat</h2>
@@ -91,7 +87,6 @@
   </div>
 
   <script>
-    // URL Web App terbaru Anda (Pastikan akhiran NB3cA/exec)
     const API_URL = "https://script.google.com/macros/s/AKfycbzoPunV_HKHjU9_fUcv6m3dLRPR_FpcY-6o96qM6tHeEfDKW_puGKQZJJg0tKPeHNB3cA/exec";
 
     let masterData = [];
@@ -107,31 +102,30 @@
 
     async function fetchMaster() {
       try {
-        const res = await fetch(`${API_URL}?action=getMaster`);
-        if (!res.ok) throw new Error("Network error");
-        masterData = await res.json();
-        console.log("Master data loaded:", masterData.length);
-      } catch (e) { 
-        console.error("Error fetchMaster:", e); 
+        const response = await fetch(`${API_URL}?action=getMaster`);
+        const data = await response.json();
+        masterData = data;
+        console.log("Master loaded:", masterData.length);
+      } catch (e) {
+        console.error("Fetch Master Error:", e);
       }
     }
 
     async function loadHistory() {
       try {
-        const res = await fetch(`${API_URL}?action=getHistory`);
-        if (!res.ok) throw new Error("Network error");
-        const data = await res.json();
+        const response = await fetch(`${API_URL}?action=getHistory`);
+        const data = await response.json();
         renderHistory(data);
-      } catch (e) { 
-        console.error("Error loadHistory:", e); 
+      } catch (e) {
+        console.error("Fetch History Error:", e);
       }
     }
 
     function renderHistory(data) {
       const list = document.getElementById('history-list');
-      if (!data || data.length === 0) { 
-        list.innerHTML = '<div class="text-center py-10 text-slate-400 text-xs font-medium">Belum ada data.</div>'; 
-        return; 
+      if (!data || data.length === 0) {
+        list.innerHTML = '<div class="text-center py-10 text-slate-400 text-xs font-medium">Belum ada data.</div>';
+        return;
       }
       list.innerHTML = data.map(item => `
         <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-2">
@@ -155,8 +149,8 @@
       if (q.length < 2) { dd.classList.add('hidden'); return; }
       
       const f = masterData.filter(i => 
-        (i.sku && i.sku.toLowerCase().includes(q)) || 
-        (i.desc && i.desc.toLowerCase().includes(q))
+        (i.sku && i.sku.toString().toLowerCase().includes(q)) || 
+        (i.desc && i.desc.toString().toLowerCase().includes(q))
       ).slice(0, 10);
       
       if (f.length > 0) {
@@ -166,8 +160,8 @@
             <span class="text-xs text-slate-500 font-medium truncate">${i.desc}</span>
           </div>`).join('');
         dd.classList.remove('hidden');
-      } else { 
-        dd.classList.add('hidden'); 
+      } else {
+        dd.classList.add('hidden');
       }
     }
 
@@ -179,6 +173,68 @@
       document.getElementById('dropdown').classList.add('hidden');
       document.getElementById('searchInput').value = '';
       document.getElementById('inputForm').classList.remove('opacity-40', 'pointer-events-none');
+    }
+
+    async function deleteItem(ts) {
+      if(!confirm("Hapus data ini?")) return;
+      showNotif("Menghapus...", "blue");
+      try {
+        await fetch(API_URL, {
+          method: 'POST',
+          body: JSON.stringify({ action: "delete", timestamp: ts })
+        });
+        showNotif("Terhapus!", "emerald");
+        loadHistory();
+      } catch (e) { showNotif("Gagal", "red"); }
+    }
+
+    function showNotif(m, c) {
+      const n = document.getElementById('notif');
+      n.className = `fixed bottom-8 left-6 right-6 p-4 rounded-2xl shadow-2xl z-[100] text-white font-bold text-sm text-center bg-${c}-500`;
+      n.innerText = m;
+      n.classList.remove('hidden');
+      setTimeout(() => n.classList.add('hidden'), 3000);
+    }
+
+    document.getElementById('inputForm').onsubmit = async function(e) {
+      e.preventDefault();
+      const ts = document.getElementById('edit-timestamp').value;
+      const data = {
+        sku: document.getElementById('val-sku').value,
+        desc: document.getElementById('val-desc').value,
+        qty: document.getElementById('qty').value,
+        pic: document.getElementById('pic').value,
+        expired: document.getElementById('expiredDate').value,
+        timestamp: ts || "" 
+      };
+
+      showNotif(ts ? "Memperbarui..." : "Menyimpan...", "blue");
+      document.getElementById('syncStatus').classList.remove('hidden');
+      
+      try {
+        await fetch(API_URL, {
+          method: 'POST',
+          body: JSON.stringify({ action: "submit", data: data })
+        });
+        document.getElementById('syncStatus').classList.add('hidden');
+        showNotif("Berhasil!", "emerald");
+        cancelEdit();
+        loadHistory();
+      } catch (e) { 
+        document.getElementById('syncStatus').classList.add('hidden');
+        showNotif("Gagal simpan", "red"); 
+      }
+    };
+
+    function cancelEdit() {
+      document.getElementById('inputForm').reset();
+      document.getElementById('edit-timestamp').value = "";
+      document.getElementById('btn-text').innerText = "SIMPAN DATA";
+      document.getElementById('btnSubmit').classList.replace('bg-orange-500', 'bg-blue-600');
+      document.getElementById('btnCancelEdit').classList.add('hidden');
+      document.getElementById('inputForm').classList.add('opacity-40', 'pointer-events-none');
+      document.getElementById('display-sku').innerText = "---";
+      document.getElementById('display-desc').innerText = "Silakan pilih dari pencarian";
     }
 
     function editItem(item) {
@@ -196,72 +252,6 @@
       document.getElementById('btnCancelEdit').classList.remove('hidden');
       document.getElementById('inputForm').classList.remove('opacity-40', 'pointer-events-none');
     }
-
-    function cancelEdit() {
-      document.getElementById('inputForm').reset();
-      document.getElementById('edit-timestamp').value = "";
-      document.getElementById('btn-text').innerText = "SIMPAN DATA";
-      document.getElementById('btnSubmit').classList.replace('bg-orange-500', 'bg-blue-600');
-      document.getElementById('btnCancelEdit').classList.add('hidden');
-      document.getElementById('inputForm').classList.add('opacity-40', 'pointer-events-none');
-      document.getElementById('display-sku').innerText = "---";
-      document.getElementById('display-desc').innerText = "Silakan pilih dari pencarian";
-    }
-
-    async function deleteItem(ts) {
-      if(!confirm("Hapus data ini?")) return;
-      showNotif("Menghapus...", "blue");
-      try {
-        const res = await fetch(API_URL, {
-          method: 'POST',
-          body: JSON.stringify({ action: "delete", timestamp: ts })
-        });
-        showNotif("Terhapus!", "emerald");
-        loadHistory();
-      } catch (e) { 
-        showNotif("Gagal hapus", "red"); 
-      }
-    }
-
-    function showNotif(m, c) {
-      const n = document.getElementById('notif');
-      n.className = `fixed bottom-8 left-6 right-6 p-4 rounded-2xl shadow-2xl z-[100] text-white font-bold text-sm text-center bg-${c}-500`;
-      n.innerText = m; 
-      n.classList.remove('hidden');
-      setTimeout(() => n.classList.add('hidden'), 3000);
-    }
-
-    document.getElementById('inputForm').onsubmit = async function(e) {
-      e.preventDefault();
-      const ts = document.getElementById('edit-timestamp').value;
-      const rawSku = document.getElementById('val-sku').value;
-      const formattedSku = rawSku.startsWith("'") ? rawSku : "'" + rawSku;
-
-      const data = {
-        sku: formattedSku,
-        desc: document.getElementById('val-desc').value,
-        qty: document.getElementById('qty').value,
-        pic: document.getElementById('pic').value,
-        expired: document.getElementById('expiredDate').value,
-        timestamp: ts || "" 
-      };
-
-      showNotif(ts ? "Memperbarui..." : "Menyimpan...", "blue");
-      document.getElementById('syncStatus').classList.remove('hidden');
-      
-      try {
-        const res = await fetch(API_URL, {
-          method: 'POST',
-          body: JSON.stringify({ action: "submit", data: data })
-        });
-        document.getElementById('syncStatus').classList.add('hidden');
-        showNotif("Berhasil!", "emerald");
-        cancelEdit();
-        loadHistory();
-      } catch (e) { 
-        showNotif("Gagal simpan", "red"); 
-      }
-    };
   </script>
 </body>
 </html>
