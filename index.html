@@ -91,7 +91,7 @@
   </div>
 
   <script>
-    // URL Web App terbaru
+    // URL Web App terbaru Anda (Pastikan akhiran NB3cA/exec)
     const API_URL = "https://script.google.com/macros/s/AKfycbzoPunV_HKHjU9_fUcv6m3dLRPR_FpcY-6o96qM6tHeEfDKW_puGKQZJJg0tKPeHNB3cA/exec";
 
     let masterData = [];
@@ -108,22 +108,31 @@
     async function fetchMaster() {
       try {
         const res = await fetch(`${API_URL}?action=getMaster`);
+        if (!res.ok) throw new Error("Network error");
         masterData = await res.json();
         console.log("Master data loaded:", masterData.length);
-      } catch (e) { console.error("Error fetchMaster:", e); }
+      } catch (e) { 
+        console.error("Error fetchMaster:", e); 
+      }
     }
 
     async function loadHistory() {
       try {
         const res = await fetch(`${API_URL}?action=getHistory`);
+        if (!res.ok) throw new Error("Network error");
         const data = await res.json();
         renderHistory(data);
-      } catch (e) { console.error("Error loadHistory:", e); }
+      } catch (e) { 
+        console.error("Error loadHistory:", e); 
+      }
     }
 
     function renderHistory(data) {
       const list = document.getElementById('history-list');
-      if (!data || data.length === 0) { list.innerHTML = '<div class="text-center py-10 text-slate-400 text-xs font-medium">Belum ada data.</div>'; return; }
+      if (!data || data.length === 0) { 
+        list.innerHTML = '<div class="text-center py-10 text-slate-400 text-xs font-medium">Belum ada data.</div>'; 
+        return; 
+      }
       list.innerHTML = data.map(item => `
         <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-2">
           <div class="flex justify-between items-start">
@@ -144,11 +153,22 @@
       const q = document.getElementById('searchInput').value.toLowerCase();
       const dd = document.getElementById('dropdown');
       if (q.length < 2) { dd.classList.add('hidden'); return; }
-      const f = masterData.filter(i => i.sku.toLowerCase().includes(q) || i.desc.toLowerCase().includes(q)).slice(0, 6);
+      
+      const f = masterData.filter(i => 
+        (i.sku && i.sku.toLowerCase().includes(q)) || 
+        (i.desc && i.desc.toLowerCase().includes(q))
+      ).slice(0, 10);
+      
       if (f.length > 0) {
-        dd.innerHTML = f.map(i => `<div onclick="selectItem('${i.sku}', '${i.desc.replace(/'/g, "\\'")}')" class="p-4 border-b border-slate-50 hover:bg-blue-50 cursor-pointer flex flex-col"><span class="font-black text-blue-700 text-sm">${i.sku}</span><span class="text-xs text-slate-500 font-medium truncate">${i.desc}</span></div>`).join('');
+        dd.innerHTML = f.map(i => `
+          <div onclick="selectItem('${i.sku}', '${i.desc.replace(/'/g, "\\'")}')" class="p-4 border-b border-slate-50 hover:bg-blue-50 cursor-pointer flex flex-col">
+            <span class="font-black text-blue-700 text-sm">${i.sku}</span>
+            <span class="text-xs text-slate-500 font-medium truncate">${i.desc}</span>
+          </div>`).join('');
         dd.classList.remove('hidden');
-      } else { dd.classList.add('hidden'); }
+      } else { 
+        dd.classList.add('hidden'); 
+      }
     }
 
     function selectItem(s, d) {
@@ -192,19 +212,22 @@
       if(!confirm("Hapus data ini?")) return;
       showNotif("Menghapus...", "blue");
       try {
-        await fetch(API_URL, {
+        const res = await fetch(API_URL, {
           method: 'POST',
           body: JSON.stringify({ action: "delete", timestamp: ts })
         });
         showNotif("Terhapus!", "emerald");
         loadHistory();
-      } catch (e) { showNotif("Gagal", "red"); }
+      } catch (e) { 
+        showNotif("Gagal hapus", "red"); 
+      }
     }
 
     function showNotif(m, c) {
       const n = document.getElementById('notif');
       n.className = `fixed bottom-8 left-6 right-6 p-4 rounded-2xl shadow-2xl z-[100] text-white font-bold text-sm text-center bg-${c}-500`;
-      n.innerText = m; n.classList.remove('hidden');
+      n.innerText = m; 
+      n.classList.remove('hidden');
       setTimeout(() => n.classList.add('hidden'), 3000);
     }
 
@@ -227,7 +250,7 @@
       document.getElementById('syncStatus').classList.remove('hidden');
       
       try {
-        await fetch(API_URL, {
+        const res = await fetch(API_URL, {
           method: 'POST',
           body: JSON.stringify({ action: "submit", data: data })
         });
@@ -235,7 +258,9 @@
         showNotif("Berhasil!", "emerald");
         cancelEdit();
         loadHistory();
-      } catch (e) { showNotif("Gagal", "red"); }
+      } catch (e) { 
+        showNotif("Gagal simpan", "red"); 
+      }
     };
   </script>
 </body>
