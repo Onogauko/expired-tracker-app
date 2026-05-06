@@ -17,11 +17,13 @@
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen pb-20">
   <div class="max-w-md mx-auto">
+    <!-- Header Aplikasi -->
     <header class="bg-blue-600 text-white pt-8 pb-12 px-6 rounded-b-[2.5rem] shadow-xl text-center">
       <h1 class="text-2xl font-extrabold tracking-tight">EXPIRED TRACKER</h1>
       <p class="text-blue-100 text-xs font-bold uppercase tracking-widest mt-1">Manajemen Stok Mobile</p>
     </header>
 
+    <!-- Navigasi Tab -->
     <div class="px-5 -mt-6 mb-4">
       <div class="flex bg-white p-1 rounded-2xl shadow-lg border border-slate-200">
         <button onclick="switchView('input')" id="tab-input" class="flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all bg-blue-600 text-white shadow-md">Input</button>
@@ -29,6 +31,7 @@
       </div>
     </div>
 
+    <!-- VIEW: INPUT -->
     <div id="view-input" class="p-5 space-y-6">
       <div class="bg-white p-3 rounded-2xl shadow-lg border border-slate-200">
         <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-2">Cari Nama / SKU Barang</label>
@@ -72,6 +75,7 @@
       </form>
     </div>
 
+    <!-- VIEW: HISTORY -->
     <div id="view-history" class="hidden p-5 space-y-4">
       <div class="flex justify-between items-center px-2">
         <h2 class="text-sm font-black text-slate-400 uppercase tracking-widest">Riwayat</h2>
@@ -87,8 +91,8 @@
   </div>
 
   <script>
-    // URL Web App kamu
-    const API_URL = "https://script.google.com/macros/s/AKfycbw7InuG8-tk945b7N1skongoArimmo9uhkkd_QzhekKyWhVJJusPALMQbBXA8amk5MeYQ/exec";
+    // URL Web App terbaru
+    const API_URL = "https://script.google.com/macros/s/AKfycbzoPunV_HKHjU9_fUcv6m3dLRPR_FpcY-6o96qM6tHeEfDKW_puGKQZJJg0tKPeHNB3cA/exec";
 
     let masterData = [];
     window.onload = function() { fetchMaster(); loadHistory(); };
