@@ -17,13 +17,11 @@
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen pb-20">
   <div class="max-w-md mx-auto">
-    <!-- Header Aplikasi -->
     <header class="bg-blue-600 text-white pt-8 pb-12 px-6 rounded-b-[2.5rem] shadow-xl text-center">
       <h1 class="text-2xl font-extrabold tracking-tight">EXPIRED TRACKER</h1>
       <p class="text-blue-100 text-xs font-bold uppercase tracking-widest mt-1">Manajemen Stok Mobile</p>
     </header>
 
-    <!-- Navigasi Tab -->
     <div class="px-5 -mt-6 mb-4">
       <div class="flex bg-white p-1 rounded-2xl shadow-lg border border-slate-200">
         <button onclick="switchView('input')" id="tab-input" class="flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all bg-blue-600 text-white shadow-md">Input</button>
@@ -31,7 +29,6 @@
       </div>
     </div>
 
-    <!-- VIEW: INPUT -->
     <div id="view-input" class="p-5 space-y-6">
       <div class="bg-white p-3 rounded-2xl shadow-lg border border-slate-200">
         <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-2">Cari Nama / SKU Barang</label>
@@ -75,7 +72,6 @@
       </form>
     </div>
 
-    <!-- VIEW: HISTORY -->
     <div id="view-history" class="hidden p-5 space-y-4">
       <div class="flex justify-between items-center px-2">
         <h2 class="text-sm font-black text-slate-400 uppercase tracking-widest">Riwayat</h2>
@@ -91,7 +87,7 @@
   </div>
 
   <script>
-    // URL Web App Google Script yang sudah diperbarui
+    // URL Web App kamu
     const API_URL = "https://script.google.com/macros/s/AKfycbw7InuG8-tk945b7N1skongoArimmo9uhkkd_QzhekKyWhVJJusPALMQbBXA8amk5MeYQ/exec";
 
     let masterData = [];
@@ -105,21 +101,20 @@
       if(v === 'history') loadHistory();
     }
 
-    // Fungsi Fetch Master Data
     async function fetchMaster() {
       try {
         const res = await fetch(`${API_URL}?action=getMaster`);
         masterData = await res.json();
-      } catch (e) { console.error("Gagal ambil master:", e); }
+        console.log("Master data loaded:", masterData.length);
+      } catch (e) { console.error("Error fetchMaster:", e); }
     }
 
-    // Fungsi Fetch History Data
     async function loadHistory() {
       try {
         const res = await fetch(`${API_URL}?action=getHistory`);
         const data = await res.json();
         renderHistory(data);
-      } catch (e) { console.error("Gagal ambil history:", e); }
+      } catch (e) { console.error("Error loadHistory:", e); }
     }
 
     function renderHistory(data) {
@@ -189,20 +184,17 @@
       document.getElementById('display-desc').innerText = "Silakan pilih dari pencarian";
     }
 
-    // Fungsi Delete Data
     async function deleteItem(ts) {
-      if(!confirm("Hapus data riwayat ini?")) return;
+      if(!confirm("Hapus data ini?")) return;
       showNotif("Menghapus...", "blue");
       try {
-        // Karena Apps Script Web App butuh redirect, kita gunakan mode: 'no-cors' jika POST biasa error, 
-        // tapi untuk API JSON biasanya fetch POST standar sudah cukup.
         await fetch(API_URL, {
           method: 'POST',
           body: JSON.stringify({ action: "delete", timestamp: ts })
         });
-        showNotif("Berhasil dihapus", "emerald");
+        showNotif("Terhapus!", "emerald");
         loadHistory();
-      } catch (e) { showNotif("Gagal hapus", "red"); }
+      } catch (e) { showNotif("Gagal", "red"); }
     }
 
     function showNotif(m, c) {
@@ -212,7 +204,6 @@
       setTimeout(() => n.classList.add('hidden'), 3000);
     }
 
-    // Fungsi Submit/Update Data
     document.getElementById('inputForm').onsubmit = async function(e) {
       e.preventDefault();
       const ts = document.getElementById('edit-timestamp').value;
@@ -228,24 +219,19 @@
         timestamp: ts || "" 
       };
 
-      const isEdit = ts !== "";
-      showNotif(isEdit ? "Memperbarui..." : "Menyimpan...", "blue");
+      showNotif(ts ? "Memperbarui..." : "Menyimpan...", "blue");
       document.getElementById('syncStatus').classList.remove('hidden');
-      cancelEdit();
-
+      
       try {
         await fetch(API_URL, {
           method: 'POST',
           body: JSON.stringify({ action: "submit", data: data })
         });
         document.getElementById('syncStatus').classList.add('hidden');
-        showNotif("Data Berhasil!", "emerald");
+        showNotif("Berhasil!", "emerald");
+        cancelEdit();
         loadHistory();
-      } catch (e) {
-        showNotif("Gagal simpan", "red");
-      }
-      
-      document.getElementById('searchInput').focus();
+      } catch (e) { showNotif("Gagal", "red"); }
     };
   </script>
 </body>
