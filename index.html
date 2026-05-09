@@ -1,459 +1,461 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { 
-  Plus, Search, History, LayoutDashboard, Database, 
-  Trash2, Edit3, CheckCircle2, AlertTriangle, 
-  Clock, ChevronRight, X, Bell, Package, Upload, FileText, Download, Filter
-} from 'lucide-react';
-import { initializeApp } from "firebase/app";
-import { 
-  getFirestore, collection, addDoc, query, onSnapshot, 
-  doc, updateDoc, deleteDoc, serverTimestamp, orderBy, limit, where, writeBatch 
-} from "firebase/firestore";
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Expired Tracker Pro</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.3.2/papaparse.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#2563eb">
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAf24482S97N82pkopYpj1ZJqdOPiwW9g4",
-  authDomain: "expired-tracker-pro.firebaseapp.com",
-  projectId: "expired-tracker-pro",
-  storageBucket: "expired-tracker-pro.firebasestorage.app",
-  messagingSenderId: "610264736832",
-  appId: "1:610264736832:web:0838a2477519f4dd952ba5"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-
-const TAB_DASHBOARD = 'dashboard';
-const TAB_INPUT = 'input';
-const TAB_HISTORY = 'history';
-const TAB_MASTER = 'master';
-
-export default function ExpiredTrackerApp() {
-  const [activeTab, setActiveTab] = useState(TAB_DASHBOARD);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [masterSearch, setMasterSearch] = useState('');
-  const [masterProducts, setMasterProducts] = useState([]);
-  const [inventory, setInventory] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [importProgress, setImportProgress] = useState(0);
-  const [showNotification, setShowNotification] = useState({ show: false, msg: '', type: 'blue' });
-  
-  const [formData, setFormData] = useState({ 
-    sku: '', desc: '', qty: '', pic: '', expired: '', id: null 
-  });
-
-  const handleDeleteInventory = async (id) => {
-    try {
-      await deleteDoc(doc(db, "inventory_expired", id));
-      triggerNotif("Data berhasil dihapus", "red");
-    } catch (err) {
-      triggerNotif("Gagal menghapus data", "red");
-      console.error("Delete error:", err);
-    }
-  };
-
-  const handleDeleteMaster = async (id) => {
-    try {
-      await deleteDoc(doc(db, "master_products", id));
-      triggerNotif("SKU berhasil dihapus", "red");
-    } catch (err) {
-      triggerNotif("Gagal menghapus SKU", "red");
-    }
-  };
-
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const fileInputRef = useRef(null);
-
-  useEffect(() => {
-    const qMaster = query(collection(db, "master_products"), orderBy("sku"));
-    const unsubMaster = onSnapshot(qMaster, (snapshot) => {
-      setMasterProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    const qInv = query(collection(db, "inventory_expired"), orderBy("createdAt", "desc"));
-    const unsubInv = onSnapshot(qInv, (snapshot) => {
-      setInventory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    return () => { unsubMaster(); unsubInv(); };
-  }, []);
-
-  const triggerNotif = (msg, type = 'blue') => {
-    setShowNotification({ show: true, msg, type });
-    setTimeout(() => setShowNotification({ show: false, msg: '', type: 'blue' }), 3000);
-  };
-
-  const handleCSVImport = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const text = event.target.result;
-      const lines = text.split('\n');
-      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-      
-      const skuIdx = headers.findIndex(h => h.includes('sku'));
-      const descIdx = headers.findIndex(h => h.includes('item') || h.includes('description') || h.includes('desc'));
-
-      if (skuIdx === -1 || descIdx === -1) {
-        triggerNotif("CSV butuh kolom 'sku' & 'description'", "red");
-        return;
-      }
-
-      setIsLoading(true);
-      const dataRows = lines.slice(1).filter(line => line.trim() !== '');
-      const totalRows = dataRows.length;
-      
-      try {
-        const chunkSize = 400; 
-        for (let i = 0; i < totalRows; i += chunkSize) {
-          const batch = writeBatch(db);
-          const chunk = dataRows.slice(i, i + chunkSize);
-
-          chunk.forEach((line) => {
-            const values = line.split(',').map(v => v.trim());
-            const skuValue = values[skuIdx];
-            const descValue = values[descIdx];
-
-            if (skuValue && descValue) {
-              const newDocRef = doc(collection(db, "master_products"));
-              batch.set(newDocRef, {
-                sku: skuValue.toString().toUpperCase(),
-                itemDescription: descValue,
-                createdAt: serverTimestamp()
-              });
-            }
-          });
-
-          await batch.commit();
-          setImportProgress(Math.round(((i + chunk.length) / totalRows) * 100));
-        }
-
-        triggerNotif(`Berhasil import ${totalRows} produk!`, "emerald");
-        setImportProgress(0);
-      } catch (err) {
-        triggerNotif("Gagal import data", "red");
-      } finally {
-        setIsLoading(false);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleSave = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-    try {
-      const payload = {
-        sku: formData.sku,
-        itemDescription: formData.desc,
-        qty: parseInt(formData.qty),
-        pic: formData.pic.toUpperCase(),
-        expiredDate: formData.expired,
-        updatedAt: serverTimestamp(),
-        notificationFlags: formData.id ? {} : {
-          "90": false, "60": false, "30": false, "15": false, "14": false, "10": false, "7": false, "0": false
-        }
-      };
-
-      if (formData.id) {
-        await updateDoc(doc(db, "inventory_expired", formData.id), payload);
-        triggerNotif("Data diperbarui!", "emerald");
-      } else {
-        await addDoc(collection(db, "inventory_expired"), {
-          ...payload,
-          createdAt: serverTimestamp()
-        });
-        triggerNotif("Berhasil disimpan!", "blue");
-      }
-      
-      resetForm();
-      setActiveTab(TAB_HISTORY);
-    } catch (err) {
-      triggerNotif("Gagal menyimpan", "red");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({ sku: '', desc: '', qty: '', pic: '', expired: '', id: null });
-    setSearchQuery('');
-  };
-
-  const filteredMaster = useMemo(() => {
-    if (searchQuery.length < 2) return [];
-    return masterProducts.filter(p => 
-      p.sku?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      p.itemDescription?.toLowerCase().includes(searchQuery.toLowerCase())
-    ).slice(0, 10);
-  }, [searchQuery, masterProducts]);
-
-  const listMasterFiltered = useMemo(() => {
-    if (!masterSearch) return masterProducts.slice(0, 50);
-    return masterProducts.filter(p => 
-      p.sku?.toLowerCase().includes(masterSearch.toLowerCase()) || 
-      p.itemDescription?.toLowerCase().includes(masterSearch.toLowerCase())
-    );
-  }, [masterSearch, masterProducts]);
-
-  const stats = useMemo(() => {
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    return {
-      total: inventory.length,
-      expired: inventory.filter(i => new Date(i.expiredDate) <= today).length,
-      h7: inventory.filter(i => {
-        const diff = Math.ceil((new Date(i.expiredDate) - today) / (86400000));
-        return diff > 0 && diff <= 7;
-      }).length,
-      h30: inventory.filter(i => {
-        const diff = Math.ceil((new Date(i.expiredDate) - today) / (86400000));
-        return diff > 7 && diff <= 30;
-      }).length,
-    };
-  }, [inventory]);
-
-  return (
-    <div className="bg-slate-50 text-slate-900 min-h-screen pb-28 font-sans max-w-md mx-auto relative shadow-2xl border-x border-slate-200">
-      
-      {/* Header */}
-      <header className="bg-blue-600 text-white pt-10 pb-16 px-6 rounded-b-[3rem] shadow-xl text-center relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-4 opacity-20 pointer-events-none"><Database size={100} /></div>
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .tab-active { background-color: #2563eb; color: white; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+        .tab-inactive { color: #94a3b8; }
+        .hide { display: none !important; }
+        input[type="date"]::-webkit-inner-spin-button,
+        input[type="date"]::-webkit-calendar-picker-indicator { display: block; cursor: pointer; }
         
-        {/* New Strategic Master Data Button */}
-        <button 
-          onClick={() => setActiveTab(TAB_MASTER)}
-          className="absolute top-8 right-6 p-3 bg-white/10 hover:bg-white/20 rounded-2xl border border-white/20 transition-all active:scale-90 flex flex-col items-center gap-1 group z-50"
-        >
-          <Database size={20} className="text-white" />
-          <span className="text-[8px] font-black uppercase tracking-tighter">Master</span>
-        </button>
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen pb-28">
 
-        <h1 className="text-2xl font-extrabold tracking-tight relative z-10 uppercase">Expired Tracker</h1>
-        <p className="text-blue-100 text-[10px] font-black uppercase tracking-[0.2em] mt-1 relative z-10">Cloud Master System</p>
-      </header>
-
-      {/* Main Tabs Navigation */}
-      <div className="px-5 -mt-8 mb-6 relative z-20">
-        <div className="flex bg-white p-1.5 rounded-2xl shadow-lg border border-slate-200">
-          <button onClick={() => setActiveTab(TAB_DASHBOARD)} className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${activeTab === TAB_DASHBOARD ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400'}`}>Beranda</button>
-          <button onClick={() => setActiveTab(TAB_INPUT)} className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${activeTab === TAB_INPUT ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400'}`}>Input</button>
-          <button onClick={() => setActiveTab(TAB_HISTORY)} className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${activeTab === TAB_HISTORY ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400'}`}>Laporan</button>
-        </div>
-      </div>
-
-      {/* DASHBOARD VIEW */}
-      {activeTab === TAB_DASHBOARD && (
-        <div className="px-5 space-y-4 animate-in fade-in duration-500">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm col-span-2 flex justify-between items-center">
-              <div>
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Monitored</p>
-                <div className="text-3xl font-black text-slate-800">{stats.total}</div>
-              </div>
-              <div className="p-4 bg-blue-50 text-blue-600 rounded-3xl"><Package size={28}/></div>
-            </div>
-            <div className="bg-red-50 p-5 rounded-[2rem] border border-red-100 shadow-sm">
-              <p className="text-[9px] font-black text-red-400 uppercase tracking-widest mb-1">H-7 Alert</p>
-              <div className="text-3xl font-black text-red-600">{stats.h7}</div>
-            </div>
-            <div className="bg-yellow-50 p-5 rounded-[2rem] border border-yellow-100 shadow-sm">
-              <p className="text-[9px] font-black text-yellow-600 uppercase tracking-widest mb-1">H-30 Alert</p>
-              <div className="text-3xl font-black text-yellow-700">{stats.h30}</div>
-            </div>
-          </div>
-          
-          {/* Section Pengaturan Database telah dihapus dari sini karena sudah dipindah ke Header */}
-        </div>
-      )}
-
-      {/* MASTER DATA VIEW (New Strategic Compact UI) */}
-      {activeTab === TAB_MASTER && (
-        <div className="px-5 space-y-4 animate-in slide-in-from-right-4 duration-300">
-          
-          {/* Strategic Compact Import Bar */}
-          <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between gap-3">
-            <div className="flex flex-col">
-              <span className="text-[10px] font-black text-slate-400 uppercase">Import CSV</span>
-              <span className="text-[9px] text-blue-500 font-bold">sku, description</span>
-            </div>
-            <div className="flex gap-2 flex-1 justify-end">
-              <input type="file" ref={fileInputRef} onChange={handleCSVImport} accept=".csv" className="hidden" />
-              <button 
-                onClick={() => fileInputRef.current.click()}
-                disabled={isLoading}
-                className="px-4 py-2 bg-blue-600 text-white rounded-xl font-black text-[10px] flex items-center gap-2 shadow-lg shadow-blue-100 active:scale-95 transition-all"
-              >
-                {isLoading ? (
-                  <span className="animate-pulse">{importProgress}%</span>
-                ) : (
-                  <><Upload size={14} /> PILIH FILE</>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Search Box */}
-          <div className="relative">
-            <input 
-              type="text" 
-              placeholder="Cari SKU di master..." 
-              value={masterSearch}
-              onChange={(e) => setMasterSearch(e.target.value)}
-              className="w-full p-4 bg-white border border-slate-200 rounded-2xl text-xs font-bold pl-12 shadow-sm outline-none focus:border-blue-500 transition-all"
-            />
-            <Search className="absolute left-4 top-4 text-slate-300" size={18} />
-          </div>
-
-          {/* List Section */}
-      <div className="space-y-2">
-         <div className="flex justify-between items-center px-2">
-           {/* Mengganti listMasterFiltered.length menjadi masterProducts.length agar menunjukkan total database */}
-           <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{masterProducts.length} SKU Terdaftar</div>
-           <button onClick={() => setActiveTab(TAB_DASHBOARD)} className="text-[10px] font-black text-blue-600">KEMBALI</button>
-         </div>
-         {listMasterFiltered.map((p, idx) => (
-               <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-100 flex items-center justify-between">
-                 <div className="flex items-center gap-3">
-                   <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center text-[10px] font-black text-slate-300">{idx+1}</div>
-                   <div>
-                     <div className="text-[10px] font-black text-blue-600 uppercase leading-none mb-0.5">{p.sku}</div>
-                   <div className="text-xs font-bold text-slate-800 truncate w-40">{p.itemDescription}</div>
-                 </div>
-               </div>
-               <button onClick={() => handleDeleteMaster(p.id)} className="p-2 text-slate-200 hover:text-red-500">
-                 <Trash2 size={14} />
-               </button>
-             </div>
-           ))}
-             {listMasterFiltered.length === 0 && (
-               <div className="text-center py-10 text-slate-300 text-[10px] font-black uppercase">Data Tidak Ditemukan</div>
-             )}
-          </div>
-        </div>
-      )}
-
-      {/* INPUT DATA VIEW */}
-      {activeTab === TAB_INPUT && (
-        <div className="px-5 space-y-6 animate-in slide-in-from-bottom-4 duration-300">
-          <div className="bg-white p-4 rounded-3xl shadow-lg border border-slate-200">
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-2">Cari Nama / SKU</label>
-            <div className="relative">
-              <input 
-                type="text" 
-                value={searchQuery}
-                onChange={(e) => {setSearchQuery(e.target.value); setIsDropdownOpen(true);}}
-                placeholder="Ketik minimal 2 huruf..."
-                className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-bold text-slate-700 pl-12"
-              />
-              <Search className="absolute left-4 top-4 text-slate-400" size={20} />
-              
-              {isDropdownOpen && searchQuery.length >= 2 && (
-                <div className="absolute w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 max-h-60 overflow-y-auto ring-4 ring-black/5">
-                  {filteredMaster.length > 0 ? filteredMaster.map((p, idx) => (
-                    <div key={idx} onClick={() => {setFormData({...formData, sku: p.sku, desc: p.itemDescription}); setIsDropdownOpen(false); setSearchQuery('');}}
-                      className="p-4 border-b border-slate-50 hover:bg-blue-50 cursor-pointer flex flex-col"
-                    >
-                      <span className="font-black text-blue-700 text-sm">{p.sku}</span>
-                      <span className="text-xs text-slate-500 font-bold truncate">{p.itemDescription}</span>
-                    </div>
-                  )) : (
-                    <div className="p-4 text-center text-xs text-slate-400 font-bold">Produk tidak ditemukan</div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <form onSubmit={handleSave} className={`bg-white p-7 rounded-[2.5rem] shadow-xl space-y-5 border border-slate-200 transition-all ${!formData.sku ? 'opacity-40 pointer-events-none' : ''}`}>
-             <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-start gap-3">
-              <div className="p-2 bg-white rounded-lg shadow-sm"><CheckCircle2 size={16} className="text-blue-600" /></div>
-              <div className="flex-1">
-                <div className="font-extrabold text-blue-900 text-lg leading-tight">{formData.sku || '---'}</div>
-                <div className="text-xs text-blue-600 font-bold mt-1 italic leading-tight truncate w-48">{formData.desc || 'Pilih produk dari pencarian'}</div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Qty</label>
-                <input type="number" required value={formData.qty} onChange={(e) => setFormData({...formData, qty: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Petugas (PIC)</label>
-                <input type="text" required value={formData.pic} onChange={(e) => setFormData({...formData, pic: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold uppercase" />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tanggal Expired</label>
-              <input type="date" required value={formData.expired} onChange={(e) => setFormData({...formData, expired: e.target.value})} className="w-full p-4 bg-blue-50 border-2 border-blue-100 rounded-2xl font-black text-blue-900" />
-            </div>
-
-            <button disabled={isLoading} type="submit" className="w-full py-5 bg-blue-600 text-white rounded-3xl font-extrabold text-lg shadow-lg active:scale-95 transition-all">
-              {isLoading ? 'MEMPROSES...' : 'SIMPAN DATA'}
+    <div class="max-w-md mx-auto relative shadow-2xl min-h-screen bg-slate-50 border-x border-slate-200">
+        
+        <header class="bg-blue-600 text-white pt-10 pb-16 px-6 rounded-b-[3rem] shadow-xl text-center relative overflow-hidden">
+            <div class="absolute top-0 right-0 p-4 opacity-20 pointer-events-none"><i data-lucide="database" size="100"></i></div>
+            
+            <!-- Strategic Master Button -->
+            <button onclick="switchTab('master')" class="absolute top-8 right-6 p-3 bg-white/10 hover:bg-white/20 rounded-2xl border border-white/20 transition-all active:scale-90 flex flex-col items-center gap-1 z-50">
+                <i data-lucide="database" class="w-5 h-5 text-white"></i>
+                <span class="text-[8px] font-black uppercase tracking-tighter">Master</span>
             </button>
-          </form>
+
+            <h1 class="text-2xl font-extrabold tracking-tight relative z-10 uppercase">Expired Tracker</h1>
+            <p class="text-blue-100 text-[10px] font-black uppercase tracking-[0.2em] mt-1 relative z-10">Cloud Master System</p>
+        </header>
+
+        <div class="px-5 -mt-8 mb-6 relative z-20">
+            <div class="flex bg-white p-1.5 rounded-2xl shadow-lg border border-slate-200">
+                <button onclick="switchTab('dashboard')" id="btn-dashboard" class="flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all tab-active">Beranda</button>
+                <button onclick="switchTab('input')" id="btn-input" class="flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all tab-inactive">Input</button>
+                <button onclick="switchTab('history')" id="btn-history" class="flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all tab-inactive">Laporan</button>
+            </div>
         </div>
-      )}
 
-      {/* HISTORY VIEW */}
-      {activeTab === TAB_HISTORY && (
-        <div className="px-5 space-y-4 animate-in slide-in-from-right-4 duration-300">
-          <div className="flex justify-between items-center px-2">
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Daftar Inventory</div>
-            <Filter size={16} className="text-slate-300" />
-          </div>
-          {inventory.map((item) => {
-            const diff = Math.ceil((new Date(item.expiredDate) - new Date().setHours(0,0,0,0)) / 86400000);
-            const statusColor = diff <= 0 ? 'bg-black' : diff <= 7 ? 'bg-red-500' : diff <= 30 ? 'bg-yellow-500' : 'bg-blue-500';
-
-            return (
-              <div key={item.id} className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col gap-3 relative overflow-hidden">
-                <div className={`absolute top-0 left-0 w-2 h-full ${statusColor}`}></div>
-                <div className="flex justify-between items-start pl-3">
-                  <div className="flex-1 overflow-hidden">
-                    <div className="text-[10px] font-black text-blue-600 uppercase">{item.sku}</div>
-                    <div className="text-sm font-black text-slate-800 truncate">{item.itemDescription}</div>
-                  </div>
-                  <div className="bg-slate-100 px-3 py-1 rounded-full font-black text-[10px] ml-2">QTY: {item.qty}</div>
-                </div>
-                <div className="flex justify-between items-center pt-3 border-t border-slate-50 pl-3">
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1">
-                      <Clock size={10} /> {item.expiredDate}
+        <main id="app-content">
+            
+            <!-- DASHBOARD VIEW -->
+            <section id="view-dashboard" class="px-5 space-y-4 animate-in fade-in duration-500">
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm col-span-2 flex justify-between items-center">
+                        <div>
+                            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Monitored</p>
+                            <div id="stat-total" class="text-3xl font-black text-slate-800">0</div>
+                        </div>
+                        <div class="p-4 bg-blue-50 text-blue-600 rounded-3xl"><i data-lucide="package" class="w-7 h-7"></i></div>
                     </div>
-                    <div className="text-[9px] font-bold text-slate-300 uppercase mt-1">PIC: {item.pic}</div>
-                  </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => {setFormData({sku: item.sku, desc: item.itemDescription, qty: item.qty, pic: item.pic, expired: item.expiredDate, id: item.id}); setActiveTab(TAB_INPUT);}} className="p-2 text-slate-300 hover:text-blue-600"><Edit3 size={16}/></button>
-                    <button onClick={() => handleDeleteInventory(item.id)} className="p-2 text-slate-200 hover:text-red-500"><Trash2 size={16}/></button>
-                  </div>
+                    <div class="bg-red-50 p-5 rounded-[2rem] border border-red-100 shadow-sm">
+                        <p class="text-[9px] font-black text-red-400 uppercase tracking-widest mb-1">H-7 Alert</p>
+                        <div id="stat-h7" class="text-3xl font-black text-red-600">0</div>
+                    </div>
+                    <div class="bg-yellow-50 p-5 rounded-[2rem] border border-yellow-100 shadow-sm">
+                        <p class="text-[9px] font-black text-yellow-600 uppercase tracking-widest mb-1">H-30 Alert</p>
+                        <div id="stat-h30" class="text-3xl font-black text-yellow-700">0</div>
+                    </div>
                 </div>
-              </div>
-            );
-          })}
-          {inventory.length === 0 && (
-            <div className="text-center py-20 text-slate-300 text-[10px] font-black uppercase">Belum Ada Data Input</div>
-          )}
-        </div>
-      )}
+            </section>
 
-      {/* Bottom Floating Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-100 px-8 py-5 flex justify-around items-center z-[100] max-w-md mx-auto rounded-t-[2.5rem] shadow-2xl">
-        <button onClick={() => setActiveTab(TAB_DASHBOARD)} className={`p-2 transition-all ${activeTab === TAB_DASHBOARD ? 'text-blue-600 scale-110' : 'text-slate-300'}`}><LayoutDashboard size={26} /></button>
-        <button onClick={() => setActiveTab(TAB_INPUT)} className={`p-3 rounded-2xl transition-all ${activeTab === TAB_INPUT ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-300'}`}><Plus size={26} /></button>
-        <button onClick={() => setActiveTab(TAB_HISTORY)} className={`p-2 transition-all ${activeTab === TAB_HISTORY ? 'text-blue-600 scale-110' : 'text-slate-300'}`}><History size={26} /></button>
-      </nav>
+            <!-- INPUT VIEW -->
+            <section id="view-input" class="hide px-5 space-y-6">
+                <div class="bg-white p-4 rounded-3xl shadow-lg border border-slate-200">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-2">Cari Nama / SKU</label>
+                    <div class="relative">
+                        <input type="text" id="master-search-input" oninput="handleMasterSearch(this.value)" placeholder="Ketik minimal 2 huruf..." class="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-bold text-slate-700 pl-12">
+                        <i data-lucide="search" class="absolute left-4 top-4 text-slate-400 w-5 h-5"></i>
+                        <div id="search-dropdown" class="absolute w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 max-h-60 overflow-y-auto hide"></div>
+                    </div>
+                </div>
 
-      {/* Global Notifications */}
-      {showNotification.show && (
-        <div className={`fixed bottom-24 left-6 right-6 p-4 rounded-2xl shadow-2xl z-[100] text-white font-bold text-xs text-center animate-in slide-in-from-bottom-10 duration-300 ${showNotification.type === 'emerald' ? 'bg-emerald-500' : showNotification.type === 'red' ? 'bg-red-500' : 'bg-blue-500'}`}>
-          {showNotification.msg}
-        </div>
-      )}
+                <form id="expiry-form" class="bg-white p-7 rounded-[2.5rem] shadow-xl space-y-5 border border-slate-200 opacity-40 pointer-events-none transition-all">
+                    <input type="hidden" id="form-id">
+                    <input type="hidden" id="form-sku">
+                    <input type="hidden" id="form-desc">
+                    
+                    <div class="p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-start gap-3">
+                        <div class="p-2 bg-white rounded-lg shadow-sm text-blue-600"><i data-lucide="check-circle-2" class="w-4 h-4"></i></div>
+                        <div class="flex-1">
+                            <div id="display-sku" class="font-extrabold text-blue-900 text-lg leading-tight">---</div>
+                            <div id="display-desc" class="text-xs text-blue-600 font-bold mt-1 italic leading-tight truncate w-48">Pilih produk dari pencarian</div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Qty</label>
+                            <input type="number" id="form-qty" required class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Petugas (PIC)</label>
+                            <input type="text" id="form-pic" required class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold uppercase">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tanggal Expired</label>
+                        <input type="date" id="form-date" required class="w-full p-4 bg-blue-50 border-2 border-blue-100 rounded-2xl font-black text-blue-900">
+                    </div>
+
+                    <button type="submit" id="btn-save" class="w-full py-5 bg-blue-600 text-white rounded-3xl font-extrabold text-lg shadow-lg active:scale-95 transition-all">SIMPAN DATA</button>
+                    <button type="button" onclick="resetForm()" id="btn-cancel" class="hide w-full text-center text-[10px] font-black text-slate-400 uppercase">Batal Edit</button>
+                </form>
+            </section>
+
+            <!-- HISTORY VIEW -->
+            <section id="view-history" class="hide px-5 space-y-4">
+                <div class="flex justify-between items-center px-2">
+                    <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Daftar Inventory</div>
+                    <i data-lucide="filter" class="w-4 h-4 text-slate-300"></i>
+                </div>
+                <div id="inventory-list" class="space-y-4"></div>
+            </section>
+
+            <!-- MASTER DATA VIEW -->
+            <section id="view-master" class="hide px-5 space-y-4">
+                <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between gap-3">
+                    <div class="flex flex-col">
+                        <span class="text-[10px] font-black text-slate-400 uppercase">Import CSV</span>
+                        <span class="text-[9px] text-blue-500 font-bold">sku, description</span>
+                    </div>
+                    <div class="flex gap-2 flex-1 justify-end">
+                        <input type="file" id="csv-input" accept=".csv" class="hide" onchange="handleCSV(event)">
+                        <button onclick="document.getElementById('csv-input').click()" id="btn-csv" class="px-4 py-2 bg-blue-600 text-white rounded-xl font-black text-[10px] flex items-center gap-2 shadow-lg active:scale-95 transition-all">
+                            <i data-lucide="upload" class="w-3.5 h-3.5"></i> PILIH FILE
+                        </button>
+                    </div>
+                </div>
+
+                <div class="relative">
+                    <input type="text" oninput="renderMasterList(this.value)" placeholder="Cari SKU di master..." class="w-full p-4 bg-white border border-slate-200 rounded-2xl text-xs font-bold pl-12 shadow-sm outline-none focus:border-blue-500 transition-all">
+                    <i data-lucide="search" class="absolute left-4 top-4 text-slate-300 w-4 h-4"></i>
+                </div>
+
+                <div class="flex justify-between items-center px-2">
+                    <div id="master-count" class="text-[10px] font-black text-slate-400 uppercase tracking-widest">0 SKU Terdaftar</div>
+                    <button onclick="switchTab('dashboard')" class="text-[10px] font-black text-blue-600">KEMBALI</button>
+                </div>
+                <div id="master-list" class="space-y-2"></div>
+            </section>
+
+        </main>
+
+        <nav class="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-100 px-8 py-5 flex justify-around items-center z-[100] max-w-md mx-auto rounded-t-[2.5rem] shadow-2xl">
+            <button onclick="switchTab('dashboard')" id="nav-dashboard" class="p-2 text-blue-600 scale-110"><i data-lucide="layout-dashboard" class="w-6 h-6"></i></button>
+            <button onclick="switchTab('input')" id="nav-input" class="p-3 text-slate-300 transition-all"><i data-lucide="plus" class="w-6 h-6"></i></button>
+            <button onclick="switchTab('history')" id="nav-history" class="p-2 text-slate-300 transition-all"><i data-lucide="history" class="w-6 h-6"></i></button>
+        </nav>
+
+        <!-- Notifications -->
+        <div id="notif-box" class="hide fixed bottom-24 left-6 right-6 p-4 rounded-2xl shadow-2xl z-[100] text-white font-bold text-xs text-center animate-in slide-in-from-bottom-10"></div>
     </div>
-  );
-}
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, writeBatch, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAf24482S97N82pkopYpj1ZJqdOPiwW9g4",
+            authDomain: "expired-tracker-pro.firebaseapp.com",
+            projectId: "expired-tracker-pro",
+            storageBucket: "expired-tracker-pro.firebasestorage.app",
+            messagingSenderId: "610264736832",
+            appId: "1:610264736832:web:0838a2477519f4dd952ba5"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // Global State
+        let masterProducts = [];
+        let inventoryData = [];
+
+        // UI Helpers
+        const showNotif = (msg, type = 'blue') => {
+            const box = document.getElementById('notif-box');
+            const colors = { emerald: 'bg-emerald-500', red: 'bg-red-500', blue: 'bg-blue-600' };
+            box.className = `${colors[type]} fixed bottom-24 left-6 right-6 p-4 rounded-2xl shadow-2xl z-[100] text-white font-bold text-xs text-center`;
+            box.innerText = msg;
+            box.classList.remove('hide');
+            setTimeout(() => box.classList.add('hide'), 3000);
+        };
+
+        onSnapshot(query(collection(db, "master_products"), orderBy("sku")), (snap) => {
+            masterProducts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            document.getElementById('master-count').innerText = `${masterProducts.length} SKU Terdaftar`;
+            renderMasterList();
+        });
+
+        onSnapshot(query(collection(db, "inventory_expired"), orderBy("createdAt", "desc")), (snap) => {
+            inventoryData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            updateStats();
+            renderInventoryList();
+        });
+
+        window.switchTab = (tab) => {
+            const views = ['dashboard', 'input', 'history', 'master'];
+            views.forEach(v => document.getElementById(`view-${v}`).classList.add('hide'));
+            document.getElementById(`view-${tab}`).classList.remove('hide');
+            
+            // Nav Styling
+            const navs = ['dashboard', 'input', 'history'];
+            navs.forEach(n => {
+                const btn = document.getElementById(`nav-${n}`);
+                const tabBtn = document.getElementById(`btn-${n}`);
+                if (btn) btn.className = n === tab ? 'p-2 text-blue-600 scale-110' : 'p-2 text-slate-300';
+                if (tabBtn) tabBtn.className = n === tab ? 'flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl tab-active' : 'flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl tab-inactive';
+            });
+            lucide.createIcons();
+        };
+
+        window.handleMasterSearch = (val) => {
+            const dropdown = document.getElementById('search-dropdown');
+            if (val.length < 2) { dropdown.classList.add('hide'); return; }
+            
+            const filtered = masterProducts.filter(p => 
+                p.sku?.toLowerCase().includes(val.toLowerCase()) || 
+                p.itemDescription?.toLowerCase().includes(val.toLowerCase())
+            ).slice(0, 10);
+
+            dropdown.innerHTML = filtered.map(p => `
+                <div onclick="selectProduct('${p.sku}', '${p.itemDescription.replace(/'/g, "\\'")}')" class="p-4 border-b border-slate-50 hover:bg-blue-50 cursor-pointer flex flex-col">
+                    <span class="font-black text-blue-700 text-sm">${p.sku}</span>
+                    <span class="text-xs text-slate-500 font-bold truncate">${p.itemDescription}</span>
+                </div>
+            `).join('');
+            dropdown.classList.remove('hide');
+        };
+
+        window.selectProduct = (sku, desc) => {
+            document.getElementById('form-sku').value = sku;
+            document.getElementById('form-desc').value = desc;
+            document.getElementById('display-sku').innerText = sku;
+            document.getElementById('display-desc').innerText = desc;
+            document.getElementById('search-dropdown').classList.add('hide');
+            document.getElementById('master-search-input').value = '';
+            document.getElementById('expiry-form').classList.remove('opacity-40', 'pointer-events-none');
+        };
+
+        // Form Submit
+        document.getElementById('expiry-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btn-save');
+            const id = document.getElementById('form-id').value;
+            btn.innerText = "MEMPROSES...";
+            
+            const payload = {
+                sku: document.getElementById('form-sku').value,
+                itemDescription: document.getElementById('form-desc').value,
+                qty: parseInt(document.getElementById('form-qty').value),
+                pic: document.getElementById('form-pic').value.toUpperCase(),
+                expiredDate: document.getElementById('form-date').value,
+                updatedAt: serverTimestamp()
+            };
+
+            try {
+                if (id) {
+                    await updateDoc(doc(db, "inventory_expired", id), payload);
+                    showNotif("Data diperbarui!", "emerald");
+                } else {
+                    await addDoc(collection(db, "inventory_expired"), {
+                        ...payload,
+                        createdAt: serverTimestamp(),
+                        notificationFlags: {}
+                    });
+                    showNotif("Berhasil disimpan!", "blue");
+                }
+                resetForm();
+                switchTab('history');
+            } catch (err) {
+                showNotif("Gagal simpan", "red");
+            } finally {
+                btn.innerText = "SIMPAN DATA";
+            }
+        };
+
+        window.resetForm = () => {
+            document.getElementById('expiry-form').reset();
+            document.getElementById('form-id').value = '';
+            document.getElementById('display-sku').innerText = '---';
+            document.getElementById('display-desc').innerText = 'Pilih produk dari pencarian';
+            document.getElementById('expiry-form').classList.add('opacity-40', 'pointer-events-none');
+            document.getElementById('btn-cancel').classList.add('hide');
+            document.getElementById('btn-save').innerText = 'SIMPAN DATA';
+        };
+
+        const updateStats = () => {
+            const today = new Date().setHours(0,0,0,0);
+            const stats = { total: inventoryData.length, h7: 0, h30: 0 };
+            
+            inventoryData.forEach(item => {
+                const diff = Math.ceil((new Date(item.expiredDate) - today) / 86400000);
+                if (diff > 0 && diff <= 7) stats.h7++;
+                if (diff > 7 && diff <= 30) stats.h30++;
+            });
+
+            document.getElementById('stat-total').innerText = stats.total;
+            document.getElementById('stat-h7').innerText = stats.h7;
+            document.getElementById('stat-h30').innerText = stats.h30;
+        };
+
+        window.renderInventoryList = () => {
+            const list = document.getElementById('inventory-list');
+            const today = new Date().setHours(0,0,0,0);
+            
+            list.innerHTML = inventoryData.map(item => {
+                const diff = Math.ceil((new Date(item.expiredDate) - today) / 86400000);
+                const color = diff <= 0 ? 'bg-black' : diff <= 7 ? 'bg-red-500' : diff <= 30 ? 'bg-yellow-500' : 'bg-blue-500';
+                
+                return `
+                    <div class="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col gap-3 relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-2 h-full ${color}"></div>
+                        <div class="flex justify-between items-start pl-3">
+                            <div class="flex-1 overflow-hidden">
+                                <div class="text-[10px] font-black text-blue-600 uppercase">${item.sku}</div>
+                                <div class="text-sm font-black text-slate-800 truncate">${item.itemDescription}</div>
+                            </div>
+                            <div class="bg-slate-100 px-3 py-1 rounded-full font-black text-[10px] ml-2">QTY: ${item.qty}</div>
+                        </div>
+                        <div class="flex justify-between items-center pt-3 border-t border-slate-50 pl-3">
+                            <div>
+                                <div class="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-1">
+                                    <i data-lucide="clock" class="w-3 h-3"></i> ${item.expiredDate}
+                                </div>
+                                <div class="text-[9px] font-bold text-slate-300 uppercase mt-1">PIC: ${item.pic}</div>
+                            </div>
+                            <div class="flex gap-1">
+                                <button onclick="editEntry('${item.id}')" class="p-2 text-slate-300 hover:text-blue-600"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
+                                <button onclick="deleteEntry('${item.id}')" class="p-2 text-slate-200 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            lucide.createIcons();
+        };
+
+        window.editEntry = (id) => {
+            const item = inventoryData.find(i => i.id === id);
+            if (!item) return;
+            switchTab('input');
+            document.getElementById('form-id').value = item.id;
+            document.getElementById('form-sku').value = item.sku;
+            document.getElementById('form-desc').value = item.itemDescription;
+            document.getElementById('form-qty').value = item.qty;
+            document.getElementById('form-pic').value = item.pic;
+            document.getElementById('form-date').value = item.expiredDate;
+            document.getElementById('display-sku').innerText = item.sku;
+            document.getElementById('display-desc').innerText = item.itemDescription;
+            document.getElementById('expiry-form').classList.remove('opacity-40', 'pointer-events-none');
+            document.getElementById('btn-cancel').classList.remove('hide');
+            document.getElementById('btn-save').innerText = 'UPDATE DATA';
+        };
+
+        window.deleteEntry = async (id) => {
+            try {
+                await deleteDoc(doc(db, "inventory_expired", id));
+                showNotif("Data dihapus", "red");
+            } catch (e) { showNotif("Gagal hapus", "red"); }
+        };
+
+        window.renderMasterList = (search = '') => {
+            const list = document.getElementById('master-list');
+            const filtered = search ? masterProducts.filter(p => p.sku.toLowerCase().includes(search.toLowerCase()) || p.itemDescription.toLowerCase().includes(search.toLowerCase())) : masterProducts.slice(0, 50);
+            
+            list.innerHTML = filtered.map((p, idx) => `
+                <div class="bg-white p-4 rounded-2xl border border-slate-100 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center text-[10px] font-black text-slate-300">${idx+1}</div>
+                        <div>
+                            <div class="text-[10px] font-black text-blue-600 uppercase leading-none mb-0.5">${p.sku}</div>
+                            <div class="text-xs font-bold text-slate-800 truncate w-40">${p.itemDescription}</div>
+                        </div>
+                    </div>
+                    <button onclick="deleteMaster('${p.id}')" class="p-2 text-slate-200 hover:text-red-500"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                </div>
+            `).join('');
+            lucide.createIcons();
+        };
+
+        window.deleteMaster = async (id) => {
+            try {
+                await deleteDoc(doc(db, "master_products", id));
+                showNotif("SKU dihapus", "red");
+            } catch (e) { showNotif("Gagal", "red"); }
+        };
+
+        // CSV Import Logic
+        window.handleCSV = (e) => {
+            const file = e.target.files[0];
+            const btn = document.getElementById('btn-csv');
+            if (!file) return;
+
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: async (results) => {
+                    const data = results.data;
+                    btn.disabled = true;
+                    btn.innerText = "IMPORTING...";
+                    
+                    try {
+                        const chunks = [];
+                        for (let i = 0; i < data.length; i += 400) {
+                            chunks.push(data.slice(i, i + 400));
+                        }
+
+                        for (const chunk of chunks) {
+                            const batch = writeBatch(db);
+                            chunk.forEach(row => {
+                                // Find keys regardless of case
+                                const skuKey = Object.keys(row).find(k => k.toLowerCase().includes('sku'));
+                                const descKey = Object.keys(row).find(k => k.toLowerCase().includes('desc') || k.toLowerCase().includes('item'));
+                                
+                                if (row[skuKey] && row[descKey]) {
+                                    const newDoc = doc(collection(db, "master_products"));
+                                    batch.set(newDoc, {
+                                        sku: row[skuKey].toString().toUpperCase(),
+                                        itemDescription: row[descKey],
+                                        createdAt: serverTimestamp()
+                                    });
+                                }
+                            });
+                            await batch.commit();
+                        }
+                        showNotif(`Berhasil import ${data.length} data`, "emerald");
+                    } catch (err) {
+                        showNotif("Gagal import", "red");
+                    } finally {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i data-lucide="upload" class="w-3.5 h-3.5"></i> PILIH FILE';
+                        lucide.createIcons();
+                        e.target.value = '';
+                    }
+                }
+            });
+        };
+
+        // Init icons
+        lucide.createIcons();
+    </script>
+</body>
+</html>
